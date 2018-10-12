@@ -9,6 +9,7 @@
 #include <memory.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "log.h"
 int main(int argc, char **argv)
 {
 	int listenfd, connfd; //监听socket和连接socket不一样，后者用于数据传输
@@ -54,7 +55,7 @@ int main(int argc, char **argv)
 			}
 		}
 	}
-	
+
 	//创建socket
 	if ((listenfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1)
 	{
@@ -82,6 +83,9 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
+	char start_msg[50];
+	sprintf(start_msg, "Start Server at port: %d", port);
+	LogInfo(start_msg);
 	//持续监听连接请求
 	while (1)
 	{
