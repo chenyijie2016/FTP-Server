@@ -9,16 +9,17 @@ $(BIN):$(OBJS)
 
 
 server.o: server.c log.h common.h 
-	$(CC) $(CFLAGS) -c server.c
+	$(CC) $(OPTS) $(CFLAGS) -c server.c
 handle.o : handle.c common.h handle.h
-	$(CC) $(CFLAGS) -c handle.c
+	$(CC) $(OPTS) $(CFLAGS) -c handle.c
 common.o: common.c common.h
-	$(CC) $(CFLAGS) -c common.c
+	$(CC) $(OPTS) $(CFLAGS) -c common.c
 log.o: log.c log.h
-	$(CC) $(CFLAGS) -c log.c
+	$(CC) $(OPTS) $(CFLAGS) -c log.c
 .PHONY:clean
 clean:
 	rm -f *.o $(OBJS)
 
-test: $(BIN)
-	./server -root /home/cyj/ftp/ -port 1240
+test: clean $(BIN)
+	./server -root /home/cyj/ftp/ -port 1100
+

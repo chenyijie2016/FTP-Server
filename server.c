@@ -48,7 +48,7 @@ void *server(void *arg)
 		else
 		{
 			if (FD_ISSET(connfd, &rfds))
-			{
+			{	
 				p = 0;
 				while (1)
 				{

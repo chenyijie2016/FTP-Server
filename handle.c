@@ -22,6 +22,7 @@ typedef enum CommandType
     AUTH,
     CWD,
     DELE,
+    FEAT,
     LIST,
     MDTM,
     MKD,
@@ -41,14 +42,13 @@ typedef enum CommandType
     SYST,
     TYPE,
     USER,
-    NOOP
 } CommandType;
 
 static const char *cmdlist_str[] =
     {
-        "ABOR", "AUTH", "CWD", "DELE", "LIST", "MDTM", "MKD", "NLST", "PASS",
+        "ABOR", "AUTH", "CWD", "DELE", "FEAT", "LIST", "MDTM", "MKD", "NLST", "PASS",
         "PASV", "PORT", "PWD", "QUIT", "RETR", "RMD", "RNFR", "RNTO", "SITE",
-        "SIZE", "STOR", "SYST", "TYPE", "USER", "NOOP"};
+        "SIZE", "STOR", "SYST", "TYPE", "USER"};
 
 void UnSupport(int connfd)
 {
@@ -69,7 +69,7 @@ int getCommandType(char *sentence)
     {
         return -1;
     }
-    for (int i = 0; i <= NOOP; i++)
+    for (int i = 0; i <= USER; i++)
     {
         if (strcmp(pch, cmdlist_str[i]) == 0)
         {
@@ -109,7 +109,11 @@ int handPass(char *sentence, int connfd)
     write(connfd, buffer, strlen(buffer));
     return 0;
 }
-
+int handleFeat(int connfd)
+{
+    write(connfd, "211 hello\r\n", 11);
+    return 0;
+}
 int handlePwd(char *sentence, Status *status)
 {
     LogInfo("handlePwd");
@@ -172,7 +176,6 @@ int handlePasv(char *setnetent, Status *status)
 
 int handleList(char *setnetent, Status *status)
 {
-    // TODO parse path
     char buffer[BUFFERSIZE];
 
     if (status->mode == Passive)
@@ -202,7 +205,7 @@ int handleList(char *setnetent, Status *status)
         struct tm *_time;
         time_t rawtime;
         char timebuff[80];
-        while (ent = readdir(dir))
+        while ((ent = readdir(dir)))
         {
             char perms[10] = "rwxrwxrwx";
             stat(ent->d_name, &statbuf);
@@ -272,43 +275,30 @@ int handleCwd(char *setnetent, Status *status)
             return -1;
         }
     }
-}
-
-int sendFile(int fd, int connfd)
-{
-    char buffer[BUFFERSIZE];
-    while (read(fd, buffer, BUFFERSIZE) > 0)
-    {
-        int n = write(connfd, buffer, strlen(buffer));
-        if (n < 0)
-        {
-            return n;
-        }
-    }
     return 0;
 }
 
 int handleRetr(char *sentence, Status *status)
 {
-
+    char origin_cwd[PATHSIZE];
+    getcwd(origin_cwd, PATHSIZE);
     char buffer[BUFFERSIZE];
     LogInfo("handleRetr");
     char *pch;
     pch = strtok(sentence, " \r\n");
     pch = strtok(NULL, " \r\n");
     LogInfo(pch);
-    char file[PATHSIZE];
-    strcpy(file, status->directory);
-    strcat(file, "/");
-    strcat(file, pch);
-    LogWarring(file);
-    int fd = open(file, O_RDONLY);
+    chdir(status->directory);
+    int fd = open(pch, O_RDONLY);
+    chdir(origin_cwd);
     if (fd < 0)
     {
         write(status->connfd, "450 \r\n", 6);
         close(fd);
+
         return -1;
     }
+
     switch (status->mode)
     {
     case Passive:
@@ -321,6 +311,7 @@ int handleRetr(char *sentence, Status *status)
         if (connfd == -1)
         {
             LogError("accept Error");
+            chdir(origin_cwd);
             return -1;
         }
 
@@ -332,7 +323,6 @@ int handleRetr(char *sentence, Status *status)
         {
             LogError("SendFile Error");
         }
-        //sendFile(fd, connfd);
         close(connfd);
 
         strcpy(buffer, "226 Transfer complete.\r\n");
@@ -342,6 +332,62 @@ int handleRetr(char *sentence, Status *status)
         break;
     }
 
+    return 0;
+}
+
+int handleStor(char *sentence, Status *status)
+{
+    char origin_cwd[PATHSIZE];
+    getcwd(origin_cwd, PATHSIZE);
+    chdir(status->directory);
+    char buffer[BUFFERSIZE];
+    LogInfo("handleRetr");
+    char *pch;
+    pch = strtok(sentence, " \r\n");
+    pch = strtok(NULL, " \r\n");
+    LogInfo(pch);
+    int fd = open(pch, O_WRONLY | O_CREAT | O_TRUNC | S_IRUSR | S_IWUSR);
+    chmod(pch, 777); // 添加读写权限
+    chdir(origin_cwd);
+    if (fd < 0)
+    {
+        strcpy(buffer, "550 Can not open file to write.\r\n");
+        write(status->connfd, buffer, strlen(buffer));
+        return -1;
+    }
+    if (status->mode == Passive)
+    {
+        int connfd = accept(status->pasv_socket_fd, NULL, NULL);
+        if (connfd == -1)
+        {
+            LogError("Stor accept Error");
+            return -1;
+        }
+        int read_n, write_n;
+        char data_buffer[BUFFERSIZE];
+        do
+        {
+            read_n = read(connfd, data_buffer, BUFFERSIZE);
+            if (read_n < 0)
+            {
+                LogError("Stor read Error");
+
+                return -1;
+            }
+            write_n = write(fd, data_buffer, BUFFERSIZE);
+            if (write_n < 0)
+            {
+                LogError("Stor read Error");
+
+                return -1;
+            }
+        } while (read_n > 0);
+        close(fd);
+        close(connfd);
+        close(status->pasv_socket_fd);
+        strcpy(buffer, "226 Transfer complete.\r\n");
+        write(status->connfd, buffer, strlen(buffer));
+    }
     return 0;
 }
 
@@ -381,9 +427,14 @@ int handleRequest(char *sentence, Status *status)
     case CWD:
         handleCwd(sentence, status);
         break;
-
     case RETR:
         handleRetr(sentence, status);
+        break;
+    case STOR:
+        handleStor(sentence, status);
+        break;
+    case FEAT:
+        handleFeat(connfd);
         break;
     default:
         UnSupport(connfd);
