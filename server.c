@@ -1,4 +1,5 @@
 #include <sys/socket.h>
+#include <sys/select.h>
 #include <netinet/in.h>
 
 #include <unistd.h>
@@ -12,34 +13,81 @@
 #include <pthread.h>
 #include "log.h"
 #include "common.h"
+#include "handle.h"
 void *server(void *arg)
 {
-	int connfd = *(int *)arg;
-	char buffer[1024];
+	fd_set rfds;
+	struct timeval tv;
+	int retval, maxfd;
+	char sentence[8192];
+	int p;
+	Status *status = (Status *)arg;
+	int connfd = status->connfd;
+	//char buffer[1024];
 	LogInfo("Start Handle New Connection");
 	write(connfd, welcome_msg, strlen(welcome_msg));
 	while (1)
 	{
-		int n = read(connfd, buffer, 80);
-		if (n < 0)
+		FD_ZERO(&rfds);
+		FD_SET(connfd, &rfds);
+		maxfd = 0;
+		if (maxfd < connfd)
+			maxfd = connfd;
+		tv.tv_sec = 1;
+		tv.tv_usec = 0;
+		retval = select(maxfd + 1, &rfds, NULL, NULL, &tv);
+		if (retval == -1)
+		{
+			LogError(" Select Error");
+			exit(1);
+		}
+		else if (retval == 0)
 		{
 			continue;
 		}
 		else
 		{
-			break;
+			if (FD_ISSET(connfd, &rfds))
+			{
+				p = 0;
+				while (1)
+				{
+					int n = read(connfd, sentence + p, 8191 - p);
+					if (n < 0)
+					{
+						printf("Error read(): %s(%d)\n", strerror(errno), errno);
+						close(connfd);
+						continue;
+					}
+					else if (n == 0)
+					{
+						break;
+					}
+					else
+					{
+						p += n;
+						if (sentence[p - 1] == '\n')
+						{
+							break;
+						}
+					}
+				}
+				handleRequest(sentence, status);
+				LogMessage(sentence);
+			}
 		}
 	}
-	//close(connfd);
+	close(connfd);
 }
 
 int main(int argc, char **argv)
 {
+	srand(time(NULL));
 	int listenfd; //监听socket和连接socket不一样，后者用于数据传输
 	struct sockaddr_in addr;
-	char sentence[8192];
-	int p;
-	int len;
+
+	//int p;
+	//int len;
 	int port = 0;
 	char dir[256] = "/tmp";
 
@@ -83,9 +131,9 @@ int main(int argc, char **argv)
 			}
 		}
 	}
-
+	chdir(dir);
 	//创建socket
-	if ((listenfd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1)
+	if ((listenfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1)
 	{
 		printf("Error socket(): %s(%d)\n", strerror(errno), errno);
 		return 1;
@@ -95,7 +143,6 @@ int main(int argc, char **argv)
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(port);
-	
 	addr.sin_addr.s_addr = INADDR_ANY; //监听"0.0.0.0"
 
 	//将本机的ip和port与socket绑定
@@ -121,6 +168,7 @@ int main(int argc, char **argv)
 	{
 		//等待client的连接 -- 阻塞函数
 		int *connfd = (int *)malloc(sizeof(int));
+		Status *status = (Status *)malloc(sizeof(Status));
 		if ((*connfd = accept(listenfd, NULL, NULL)) == -1)
 		{
 			LogError("Error accept()");
@@ -129,7 +177,9 @@ int main(int argc, char **argv)
 		}
 		LogInfo("receive Connection");
 		pthread_t p;
-		pthread_create(&p, NULL, server, (void *)connfd);
+		status->connfd = *connfd;
+		strcpy(status->directory, dir);
+		pthread_create(&p, NULL, server, (void *)status);
 		// //榨干socket传来的内容
 		// p = 0;
 		// while (1)
@@ -183,5 +233,5 @@ int main(int argc, char **argv)
 		// close(connfd);
 	}
 
-	//close(listenfd);
+	close(listenfd);
 }
