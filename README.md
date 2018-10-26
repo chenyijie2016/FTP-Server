@@ -2,13 +2,18 @@
 
 A tiny FTP Server written in C
 
-# TODO
+# Build
+Use ``cmake`` or ``make``
 
-Command Support
-- [] PORT
-- [] ABOR
-- [] QUIT
-- [] ...
+```
+cmake . & make
+```
+or 
+
+```
+make
+```
+# TODO
 
 Security
 - Path Control
