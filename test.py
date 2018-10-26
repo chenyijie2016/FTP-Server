@@ -1,12 +1,32 @@
 #! /usr/bin/python3
+import subprocess
+import random
+import time
+import filecmp
+import struct
+import os
+import shutil
+import string
+from ftplib import FTP
 
-import socket
+log = open('log.txt','w')
+def test(port=1100, directory='/tmp'):
+    try:
+        server = subprocess.Popen(
+            ['./server', '-port', '%d' % port, '-root', directory], stdout=log)
+        ftp = FTP()
+        print({'str':ftp.connect('127.0.0.1', port)})
+        res =ftp.login()
+        print(res)
+        res = ftp.sendcmd('SYST')
+        print(res)
+        res = ftp.set_pasv(False)
+        print(res)
 
-
-def main():
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect(('127.0.0.1', 1234))
-    s.send(b'USER anonymous\r\n')
-
-if __name__ == '__main__':
-    main()
+        print('Test Finished! Press ^C to exit')
+        server.wait()
+    except KeyboardInterrupt:
+        log.close()
+        exit(0)
+test()
+log.close()

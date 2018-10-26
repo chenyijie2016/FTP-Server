@@ -1,23 +1,57 @@
 #ifndef COMMON_H
 #define COMMON_H
-#define BUFFERSIZE 2048
-#define PATHSIZE 1024
-typedef struct Status
-{
+#define BUFFERSIZE 512
+#define PATHSIZE 260
+#define DATABUFFERSIZE 8192
+typedef struct Status {
     int connfd;
     char directory[PATHSIZE];
     int mode;
-    int pasv_local_addr;
-    int pasv_local_port;
-    int pasv_socket_fd;
-    int pasv_connfd;
-    int remote_addr;
+    int pasv_socket_fd; // PASV 指令的本地监听 socket handle
+    char remote_addr[20];
     int remote_port;
-} Status;
+    char old_filename[PATHSIZE];
+} ServerStatus;
+typedef enum CommandType {
+    ABOR,
+    AUTH,
+    CWD,
+    DELE,
+    FEAT,
+    LIST,
+    MDTM,
+    MKD,
+    NLST,
+    PASS,
+    PASV,
+    PORT,
+    PWD,
+    QUIT,
+    RETR,
+    RMD,
+    RNFR,
+    RNTO,
+    SITE,
+    SIZE,
+    STOR,
+    SYST,
+    TYPE,
+    USER,
+} CommandType;
 
-#define Initiative 2
-#define Passive 1
-extern const char welcome_msg[];
+#define ActiveMode 2
+#define PassiveMode 1
+
 int getRandomInt(int min, int max);
-int createListenScoket(int port);
+
+int createListenSocket(int port);
+
+int createClientSocket(char *remote_addr, int remote_port);
+
+int getCommandType(char *sentence);
+
+char *getParam(char *cmd);
+
+int reply(int connfd, char *msg);
+
 #endif

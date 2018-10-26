@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.9)
+project(ftpserver C)
+set(CMAKE_C_STANDARD 99)
+link_libraries(pthread)
+add_executable(server server.c log.c log.h handle.c handle.h common.c common.h)

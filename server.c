@@ -4,7 +4,7 @@
 
 #include <unistd.h>
 #include <errno.h>
-
+#include <signal.h>
 #include <ctype.h>
 #include <string.h>
 #include <memory.h>
@@ -14,147 +14,132 @@
 #include "log.h"
 #include "common.h"
 #include "handle.h"
-void *server(void *arg)
-{
-	fd_set rfds;
-	struct timeval tv;
-	int retval, maxfd;
-	char sentence[BUFFERSIZE];
-	int p;
-	Status *status = (Status *)arg;
-	int connfd = status->connfd;
-	//char buffer[1024];
-	LogInfo("Start Handle New Connection");
-	write(connfd, welcome_msg, strlen(welcome_msg));
-	while (1)
-	{
-		FD_ZERO(&rfds);
-		FD_SET(connfd, &rfds);
-		maxfd = 0;
-		if (maxfd < connfd)
-			maxfd = connfd;
-		tv.tv_sec = 1;
-		tv.tv_usec = 0;
-		retval = select(maxfd + 1, &rfds, NULL, NULL, &tv);
-		if (retval == -1)
-		{
-			LogError(" Select Error");
-			exit(1);
-		}
-		else if (retval == 0)
-		{
-			continue;
-		}
-		else
-		{
-			if (FD_ISSET(connfd, &rfds))
-			{	
-				p = 0;
-				while (1)
-				{
-					int n = read(connfd, sentence + p, 8191 - p);
-					if (n < 0)
-					{
-						printf("Error read(): %s(%d)\n", strerror(errno), errno);
-						close(connfd);
-						continue;
-					}
-					else if (n == 0)
-					{
-						break;
-					}
-					else
-					{
-						p += n;
-						if (sentence[p - 1] == '\n')
-						{
-							break;
-						}
-					}
-				}
-				LogMessage(sentence);
-				handleRequest(sentence, status);
-			}
-		}
-	}
-	close(connfd);
+
+int listenfd;
+
+void *server(void *arg) {
+    fd_set rfds;
+    struct timeval tv;
+    int retval, maxfd;
+    char sentence[BUFFERSIZE];
+    ssize_t p;
+    ServerStatus *status = (ServerStatus *) arg;
+    int connfd = status->connfd;
+    LogInfo("Start Handle New Connection");
+    reply(connfd, "220 FTP Server ready.\r\n");
+    while (1) {
+        FD_ZERO(&rfds);
+        FD_SET(connfd, &rfds);
+        maxfd = 0;
+        if (maxfd < connfd)
+            maxfd = connfd;
+        tv.tv_sec = 1;
+        tv.tv_usec = 0;
+        retval = select(maxfd + 1, &rfds, NULL, NULL, &tv);
+        if (retval == -1) {
+            LogError("Select Error");
+            exit(1);
+        } else if (retval == 0) {
+            continue;
+        } else {
+            if (FD_ISSET(connfd, &rfds)) {
+                p = 0;
+                while (1) {
+                    ssize_t n = read(connfd, sentence + p, 8191 - p);
+                    if (n < 0) {
+                        printf("Error read(): %s(%d)\n", strerror(errno), errno);
+                        close(connfd);
+                        return 0;
+                    } else if (n == 0) {
+                        break;
+                    } else {
+                        p += n;
+                        if (sentence[p - 1] == '\n') {
+                            break;
+                        }
+                    }
+                }
+                if (p == 0) {
+                    LogError("Client Disconnect!");
+                    free(status);
+                    pthread_exit(NULL);
+                }
+                handleRequest(sentence, status);
+            }
+        }
+    }
 }
 
-int main(int argc, char **argv)
-{
-	srand(time(NULL));
+void stop_server(int sig) {
+    close(listenfd);
+    exit(0);
+}
 
-	//int p;
-	//int len;
-	int port = 0;
-	char dir[256] = "/tmp";
+int main(int argc, char **argv) {
+    srand(time(NULL));
+    int port = 0;
+    char dir[256] = "/tmp";
 
-	//´¦ÀíÃüÁîÐÐ²ÎÊý
-	if (argc <= 2)
-	{
-		printf("Usage: server -port p [-root r]\n\t-port p: port number\n\t-root t: working directory, default: /tmp\n");
-		return 0;
-	}
+    //å¤„ç†å‘½ä»¤è¡Œå‚æ•°
+    if (argc <= 2) {
+        printf("Usage: server -port p [-root r]\n\t-port p: port number\n\t-root t: working directory, default: /tmp\n");
+        return 0;
+    }
 
-	for (int i = 1; i < argc; i++)
-	{
-		if (strcmp(argv[i], "-port") == 0)
-		{
-			if (i + 1 < argc)
-			{
-				port = atoi(argv[i + 1]);
-				if (port == 0)
-				{
-					LogError("Invalid port parameter! Exit");
-					return 0;
-				}
-			}
-			else
-			{
-				LogError("Invalid port parameter! Exit");
-				return 0;
-			}
-		}
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-port") == 0) {
+            if (i + 1 < argc) {
+                port = atoi(argv[i + 1]);
+                if (port == 0) {
+                    LogError("Invalid port parameter! Exit");
+                    return 0;
+                }
+            } else {
+                LogError("Invalid port parameter! Exit");
+                return 0;
+            }
+        }
 
-		if (strcmp(argv[i], "-root") == 0)
-		{
-			if (i + 1 < argc)
-			{
-				strcpy(dir, argv[i + 1]);
-			}
-			else
-			{
-				LogError("Invalid root parameter! Exit");
-				return 0;
-			}
-		}
-	}
-	chdir(dir);
+        if (strcmp(argv[i], "-root") == 0) {
+            if (i + 1 < argc) {
+                strcpy(dir, argv[i + 1]);
+            } else {
+                LogError("Invalid root parameter! Exit");
+                return 0;
+            }
+        }
+    }
+    chdir(dir);
 
-	int listenfd = createListenScoket(port);
-	char start_msg[50];
-	sprintf(start_msg, "Start Server at port: %d", port);
-	LogInfo(start_msg);
-	//³ÖÐø¼àÌýÁ¬½ÓÇëÇó
+    listenfd = createListenSocket(port);
+    if (listenfd == -1) //å¤„ç†ç»‘å®šé”™è¯¯ï¼Œé€€å‡º
+    {
+        LogError("Can not bind listen port");
+        exit(0);
+    }
+    char start_msg[50];
+    sprintf(start_msg, "Start Server at port: %d", port);
+    LogInfo(start_msg);
+    //æŒç»­ç›‘å¬è¿žæŽ¥è¯·æ±‚
+    signal(SIGINT, stop_server);
+    while (1) {
+        //ç­‰å¾…clientçš„è¿žæŽ¥ -- é˜»å¡žå‡½æ•°
+        int *connfd = (int *) malloc(sizeof(int));
+        ServerStatus *status = (ServerStatus *) malloc(sizeof(ServerStatus));
+        memset((void *) status, 0, sizeof(ServerStatus));
+        status->mode = ActiveMode; //é»˜è®¤ä¸ºä¸»åŠ¨æ¨¡å¼
+        if ((*connfd = accept(listenfd, NULL, NULL)) == -1) {
+            LogError("Can not accept socket!");
+            close(listenfd);
+            exit(0);
+            continue;
+        }
+        LogInfo("receive Connection");
+        pthread_t p;
+        status->connfd = *connfd;
+        strcpy(status->directory, dir);
+        pthread_create(&p, NULL, server, (void *) status);
+    }
 
-	while (1)
-	{
-		//µÈ´ýclientµÄÁ¬½Ó -- ×èÈûº¯Êý
-		int *connfd = (int *)malloc(sizeof(int));
-		Status *status = (Status *)malloc(sizeof(Status));
-		memset((void *)status, 0, sizeof(Status));
-		if ((*connfd = accept(listenfd, NULL, NULL)) == -1)
-		{
-			LogError("Error accept()");
-			printf("Error accept(): %s(%d)\n", strerror(errno), errno);
-			continue;
-		}
-		LogInfo("receive Connection");
-		pthread_t p;
-		status->connfd = *connfd;
-		strcpy(status->directory, dir);
-		pthread_create(&p, NULL, server, (void *)status);
-	}
-
-	close(listenfd);
+    close(listenfd);
 }

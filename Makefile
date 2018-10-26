@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -O2 -Wall -std=c99
+CFLAGS = -O2 -Wall -std=gnu99
 BIN = server
 OBJS = server.o handle.o common.o log.o
 LIBS = -pthread 
@@ -20,6 +20,6 @@ log.o: log.c log.h
 clean:
 	rm -f *.o $(OBJS)
 
-test: clean $(BIN)
-	./server -root /home/cyj/ftp/ -port 1100
+test: # clean $(BIN)
+	./server -root /home/cyj/ftp/ -port 1101
 
