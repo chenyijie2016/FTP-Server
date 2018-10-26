@@ -32,6 +32,10 @@ void Error553InvalidFileName(int connfd) {
     reply(connfd, "553 Invalid filename.\r\n");
 }
 
+void Error530PermissionDenied(int connfd) {
+    reply(connfd, "530 Permission Denied.\r\n");
+}
+
 void Error450OpenFile(int connfd) {
     reply(connfd, "450 file error.\r\n");
 }
@@ -296,7 +300,6 @@ int handleRetr(char *sentence, ServerStatus *status) {
 
 int receiveStorData(int fd, int connfd) // 从远程主机接收数据
 {
-    LogInfo("receiveStorData");
     ssize_t read_n = 0, write_n = 0;
     int totalsize = 0;
     char buffer[DATABUFFERSIZE];
@@ -319,8 +322,7 @@ int receiveStorData(int fd, int connfd) // 从远程主机接收数据
     } while (read_n > 0);
     close(fd);
     close(connfd);
-    LogInfo("receiveStorData Finished");
-    printf("received %d bytes\n",totalsize);
+    printf("received %d bytes\n", totalsize);
     return 0;
 }
 
@@ -417,6 +419,76 @@ int handleQuit(ServerStatus *status) {
     pthread_exit(NULL);
 }
 
+int handleMkd(char *sentence, ServerStatus *status) {
+
+    char *directoryName = getParam(sentence);
+    if (directoryName == NULL) {
+        Error553InvalidFileName(status->connfd);
+        free(directoryName);
+        return -1;
+    }
+    char originWorkDirectory[PATHSIZE];
+    getcwd(originWorkDirectory, PATHSIZE);
+    chdir(status->directory);
+    if (mkdir(directoryName, S_IRWXG | S_IRWXO | S_IRWXU) == 0) {
+        char buffer[BUFFERSIZE];
+        sprintf(buffer, "257 \"%s\" created.\r\n", directoryName);
+        reply(status->connfd, buffer);
+    } else {
+        Error553InvalidFileName(status->connfd);
+        chdir(originWorkDirectory);
+        free(directoryName);
+        return -1;
+    }
+    chdir(originWorkDirectory);
+    free(directoryName);
+    return 0;
+}
+
+int handleRmd(char *sentence, ServerStatus *status) {
+    char *directoryName = getParam(sentence);
+    if (directoryName == NULL) {
+        Error504InvalidArgument(status->connfd);
+        return -1;
+    }
+    char originWorkDirectory[PATHSIZE];
+    getcwd(originWorkDirectory, PATHSIZE);
+    chdir(status->directory);
+    if (rmdir(directoryName) == 0) {
+        reply(status->connfd, "250 directory deleted.\r\n");
+    } else {
+        Error530PermissionDenied(status->connfd);
+        chdir(originWorkDirectory);
+        free(directoryName);
+        return -1;
+    }
+    chdir(originWorkDirectory);
+    free(directoryName);
+    return 0;
+}
+
+int handleDele(char *sentence, ServerStatus *status) {
+    char *fileName = getParam(sentence);
+    if (fileName == NULL) {
+        Error504InvalidArgument(status->connfd);
+        return -1;
+    }
+    char originWorkDirectory[PATHSIZE];
+    getcwd(originWorkDirectory, PATHSIZE);
+    chdir(status->directory);
+    if (unlink(fileName) == 0) {
+        reply(status->connfd, "250 File Deleted.\r\n");
+    } else {
+        Error530PermissionDenied(status->connfd);
+        chdir(originWorkDirectory);
+        free(fileName);
+        return -1;
+    }
+    chdir(originWorkDirectory);
+    free(fileName);
+    return 0;
+}
+
 int handleRequest(char *sentence, ServerStatus *status) {
     int type = getCommandType(sentence);
     int connfd = status->connfd;
@@ -471,6 +543,15 @@ int handleRequest(char *sentence, ServerStatus *status) {
             break;
         case ABOR:
             handleAbor(status);
+            break;
+        case MKD:
+            handleMkd(sentence, status);
+            break;
+        case RMD:
+            handleRmd(sentence, status);
+            break;
+        case DELE:
+            handleDele(sentence, status);
             break;
         default:
             LogError("Unsupported Command");
