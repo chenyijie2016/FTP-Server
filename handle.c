@@ -205,6 +205,7 @@ int handlePort(char *sentence, ServerStatus *status) {
     sscanf(param, "%d,%d,%d,%d,%d,%d", &ip[0], &ip[1], &ip[2], &ip[3], &port_high, &port_low);
     sprintf(status->remote_addr, "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
     status->remote_port = port_high * 256 + port_low;
+    LogInfo("PORT");
     reply(status->connfd, "200 PORT command successful.\r\n");
     return 0;
 }
@@ -289,6 +290,9 @@ int handleRetr(char *sentence, ServerStatus *status) {
                 }
                 close(activeConnfd);
                 reply(status->connfd, "226 Transfer complete.\r\n");
+            }
+            else{
+                Error426FileTransferInterrupt(status->connfd);
             }
             break;
         default:

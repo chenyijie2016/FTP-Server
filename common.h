@@ -3,6 +3,8 @@
 #define BUFFERSIZE 512
 #define PATHSIZE 260
 #define DATABUFFERSIZE 8192
+#include <ctype.h>
+#include <stdint.h>
 typedef struct Status {
     int connfd;
     char directory[PATHSIZE];
@@ -46,7 +48,7 @@ int getRandomInt(int min, int max);
 
 int createListenSocket(int port);
 
-int createClientSocket(char *remote_addr, int remote_port);
+int createClientSocket(char *remote_addr, uint16_t remote_port);
 
 int getCommandType(char *sentence);
 
