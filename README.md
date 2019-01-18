@@ -6,7 +6,7 @@ A tiny FTP Server written in C
 Use ``cmake`` or ``make``
 
 ```
-cmake . & make
+cmake . && make
 ```
 or 
 
@@ -15,10 +15,3 @@ make
 ```
 # TODO
 
-Security
-- Path Control
-- ...
-
-Bug fiexs:
-- Correctness of file transfer
-- Exception handling
